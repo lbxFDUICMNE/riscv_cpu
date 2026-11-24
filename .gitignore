@@ -1,0 +1,21 @@
+# Vivado build products and local state
+.Xil/
+RISCV_CPU.cache/
+RISCV_CPU.hw/
+RISCV_CPU.ip_user_files/
+RISCV_CPU.runs/
+RISCV_CPU.sim/
+*.jou
+*.log
+*.pb
+*.wdb
+*.str
+
+# Software build products; the checked-in instruction image is reproducible
+software/*.bin
+software/*.elf
+software/*.dis
+software/*.zip
+
+# Third-party reference books and course documents
+*.pdf
