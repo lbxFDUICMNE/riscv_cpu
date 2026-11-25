@@ -27,26 +27,30 @@ input clk,reset,output [31:0]PCF,input [31:0]instr,output [31:0]readdata_addr,wr
     wire [2:0]immsrcD,rdsrcD,rdsrcE,rdsrcM,branchcontrolD,branchcontrolE;
     wire [4:0]ALUcontrolD,ALUcontrolE,Rs1D,Rs2D,RdD,Rs1E,Rs2E,RdE,RdM,RdW;
     wire [31:0]ALUresultE_set0,instrD,PC_next,PCD,PCE,immD,immE,RD1,RD2,RD1E,RD2E,srcAE,srcBE,writedataE,writedataM,ALUresultE,ALUresultM,ALUresultW;
-    wire[31:0] readdataM,readdataW,PCplus4F,PCplus4D,PCplus4E,PCplus4M,PCplus4W,resultW,PCtargetE,PCtargetM,PCtargetW,PC_next_j,forward_resultM;
+    wire[31:0] readdataM,readdataW,PCplus4F,PCplus4D,PCplus4E,PCplus4M,PCplus4W,resultW,PCtargetE,PCtargetE_after_predict,PCtargetM,PCtargetW,PC_next_j,forward_resultM;
+    wire [31:0]pred_PCtargetF,pred_PCtargetD,pred_PCtargetE;//pred_PCtargetF作为传递给指令内存的输出
     assign Rs1D=instrD[19:15];
     assign Rs2D=instrD[24:20];
     assign RdD=instrD[11:7];
     assign writedata=writedataM;
     assign write_en=memwriteM;
     assign readdata_addr=ALUresultM;
-    assign PCsrcE=jumpE||(branchE&&branch_en);
+    assign PCsrcE=jumpE||(branchE&&(pred_PCtargetE!=PCtargetE_after_predict));//branch指令，分支预测失败时冲刷
     assign PCtargetE=luiE?immE:(PCE+immE);
     assign ALUresultE_set0={ALUresultE[31:1],1'b0};
     assign forward_resultM=(resultsrcM == 2'b11)?PCtargetM:(resultsrcM==2'b10)?PCplus4M:ALUresultM;
+    assign PCtargetE_after_predict=(jumpE||branch_en)?PCtargetE:PCplus4E;//真正应该跳转的地址
     //F部分取指
     reg32_stall PC(clk,reset,stallF,0,PC_next,PCF);
-    mux_2 PC_mux(PCplus4F,PC_next_j,PCsrcE,PC_next);
-    mux_2 jal_mux(PCtargetE,ALUresultE_set0,jalrE,PC_next_j);
+    mux_2 PC_mux(pred_PCtargetF,PC_next_j,PCsrcE,PC_next);
+    mux_2 jal_mux(PCtargetE_after_predict,ALUresultE_set0,jalrE,PC_next_j);
+    BTB btb(clk,reset,branchE,branch_en,PCE,PCtargetE,PCplus4F,PCF,pred_PCtargetF);
     assign PCplus4F=PCF+4;
     //F与D
     reg32_stall instrFD(clk,reset,stallD,flushD,instr,instrD);
     reg32_stall PCFD(clk,reset,stallD,flushD,PCF,PCD);
     reg32_stall PCplus4FD(clk,reset,stallD,flushD,PCplus4F,PCplus4D);
+    reg32_stall pred_PCtargetFD(clk,reset,stallD,flushD,pred_PCtargetF,pred_PCtargetD);
     //D部分译码
     reg_file regf(clk,regwriteW,instrD[19:15],instrD[24:20],RdW,resultW,RD1,RD2);
     extend imm_extend(immsrcD,instrD[31:7],immD);
@@ -72,11 +76,13 @@ input clk,reset,output [31:0]PCF,input [31:0]instr,output [31:0]readdata_addr,wr
     reg32 immDE(clk,reset,flushE,immD,immE);
     reg32 PCplus4DE(clk,reset,flushE,PCplus4D,PCplus4E);
     reg1 luiDE(clk,reset,flushE,luiD,luiE);
+    reg32 pred_PCtargetDE(clk,reset,flushE,pred_PCtargetD,pred_PCtargetE);//预测的跳转地址
     //E部分执行
     mux_3 srcAE_mux(RD1E,resultW,forward_resultM,forwardAE,srcAE);
     mux_3 srcBE_mux(RD2E,resultW,forward_resultM,forwardBE,writedataE);
     assign srcBE=ALUsrcE?immE:writedataE;
     ALU alu(ALUcontrolE,srcAE,srcBE,branchcontrolE,ALUresultE,branch_en);
+    
     //E与M
     reg1 regwriteEM(clk,reset,0,regwriteE,regwriteM);
     reg2 resultsrcEM(clk,reset,0,resultsrcE,resultsrcM);
